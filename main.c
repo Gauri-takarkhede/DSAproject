@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <limits.h>
+#include <math.h>
 
 #define MAX_USERS 100
 #define MAX_HOSPITALS 100
@@ -17,14 +18,8 @@ typedef struct
 {
     char name[50];
     int x, y; // Coordinates of the hospital
+    bool hasAmbulance;
 } Hospital;
-
-typedef struct
-{
-    int source;
-    int destination;
-    int weight;
-} Edge;
 
 typedef struct
 {
@@ -105,6 +100,16 @@ void addNewUser()
     printf("User created successfully.\n");
 
     saveUserAccounts();
+    FILE *signupLog = fopen("signup_log.txt", "a");
+    if (signupLog == NULL)
+    {
+        printf("Error opening signup log file.\n");
+        return;
+    }
+    fprintf(signupLog, "Username: %s\n", newUser.username);
+    fprintf(signupLog, "Password: %s\n", newUser.password);
+    fprintf(signupLog, "====================\n");
+    fclose(signupLog);
 }
 
 int findUserIndex(const char *username)
@@ -131,6 +136,16 @@ bool login()
     if (userIndex != -1 && strcmp(users[userIndex].password, password) == 0)
     {
         printf("Login successful.\n");
+        FILE *loginLog = fopen("login_log.txt", "a");
+        if (loginLog == NULL)
+        {
+            printf("Error opening login log file.\n");
+            return false;
+        }
+        fprintf(loginLog, "Username: %s\n", username);
+        fprintf(loginLog, "====================\n");
+        fclose(loginLog);
+
         return true;
     }
     else
@@ -142,13 +157,17 @@ bool login()
 
 void changePassword()
 {
-    char username[50], oldPassword[50], newPassword[50];
+    char username[50];
+    char oldPassword[50];
+    char newPassword[50];
+    int userIndex;
+
     printf("Enter username: ");
     scanf("%s", username);
     printf("Enter old password: ");
     scanf("%s", oldPassword);
 
-    int userIndex = findUserIndex(username);
+    userIndex = findUserIndex(username);
     if (userIndex != -1 && strcmp(users[userIndex].password, oldPassword) == 0)
     {
         printf("Enter new password: ");
@@ -156,15 +175,26 @@ void changePassword()
         strcpy(users[userIndex].password, newPassword);
         printf("Password changed successfully.\n");
 
+        // Append user password change information to the log file
+        FILE *passwordChangeLog = fopen("password_change_log.txt", "a");
+        if (passwordChangeLog == NULL)
+        {
+            printf("Error opening password change log file.\n");
+            return;
+        }
+        fprintf(passwordChangeLog, "Username: %s\n", username);
+        fprintf(passwordChangeLog, "====================\n");
+        fclose(passwordChangeLog);
+
         saveUserAccounts();
     }
     else
     {
-        printf("Invalid username or password.\n");
+        printf("Invalid username or old password.\n");
     }
 }
 
-void addHospital(const char *name, int x, int y)
+void addHospital(const char *name, int x, int y, bool hasAmbulance)
 {
     if (graph.vertexCount == MAX_HOSPITALS)
     {
@@ -175,11 +205,12 @@ void addHospital(const char *name, int x, int y)
     strcpy(graph.hospitals[graph.vertexCount].name, name);
     graph.hospitals[graph.vertexCount].x = x;
     graph.hospitals[graph.vertexCount].y = y;
+    graph.hospitals[graph.vertexCount].hasAmbulance = hasAmbulance;
 
-    // Calculate the distance to other hospitals and update adjacency matrix
+    // Update the adjacency matrix with distances to other hospitals
     for (int i = 0; i < graph.vertexCount; i++)
     {
-        int distance = abs(graph.hospitals[i].x - x) + abs(graph.hospitals[i].y - y);
+        int distance = (int)sqrt(pow(graph.hospitals[i].x - x, 2) + pow(graph.hospitals[i].y - y, 2));
         graph.adjacencyMatrix[graph.vertexCount][i] = distance;
         graph.adjacencyMatrix[i][graph.vertexCount] = distance;
     }
@@ -195,11 +226,14 @@ int findNearestHospital(int userX, int userY)
 
     for (int i = 0; i < graph.vertexCount; i++)
     {
-        int distance = abs(graph.hospitals[i].x - userX) + abs(graph.hospitals[i].y - userY);
-        if (distance < minDistance)
+        if (graph.hospitals[i].hasAmbulance)
         {
-            minDistance = distance;
-            nearestHospital = i;
+            int distance = (int)sqrt(pow(graph.hospitals[i].x - userX, 2) + pow(graph.hospitals[i].y - userY, 2));
+            if (distance < minDistance)
+            {
+                minDistance = distance;
+                nearestHospital = i;
+            }
         }
     }
 
@@ -228,11 +262,22 @@ void bookAmbulance()
     int nearestHospital = findNearestHospital(userX, userY);
     if (nearestHospital == -1)
     {
-        printf("No hospitals available.\n");
+        printf("No hospitals with an ambulance available.\n");
         return;
     }
 
-    printf("Ambulance booked. Nearest hospital: %s\n", graph.hospitals[nearestHospital].name);
+    printf("Ambulance booked. Nearest hospital with an ambulance: %s\n", graph.hospitals[nearestHospital].name);
+    FILE *ambulanceBookingLog = fopen("ambulance_booking_log.txt", "a");
+    if (ambulanceBookingLog == NULL)
+    {
+        printf("Error opening ambulance booking log file.\n");
+        return;
+    }
+    fprintf(ambulanceBookingLog, "Username: %s\n", username);
+    fprintf(ambulanceBookingLog, "Location: (%d, %d)\n", userX, userY);
+    fprintf(ambulanceBookingLog, "Hospital: %s\n", graph.hospitals[nearestHospital].name);
+    fprintf(ambulanceBookingLog, "====================\n");
+    fclose(ambulanceBookingLog);
 }
 
 int main()
@@ -242,6 +287,14 @@ int main()
     graph.vertexCount = 0;
 
     loadUserAccounts();
+
+    // Adding hospitals to the graph
+    addHospital("Hospital A", 10, 5, true);
+    addHospital("Hospital B", 8, 12, false);
+    addHospital("Hospital C", 50, 33, false);
+    addHospital("Hospital D", 67, 42, true);
+    addHospital("Hospital E", 23, 2, true);
+    addHospital("Hospital F", 85, 72, false);
 
     while (1)
     {
@@ -303,11 +356,14 @@ int main()
         {
             char name[50];
             int x, y;
+            bool hasAmbulance;
             printf("Enter hospital name: ");
             scanf("%s", name);
             printf("Enter hospital location (x y): ");
             scanf("%d %d", &x, &y);
-            addHospital(name, x, y);
+            printf("Does the hospital have an ambulance? (0 - No, 1 - Yes): ");
+            scanf("%d", &hasAmbulance);
+            addHospital(name, x, y, hasAmbulance);
             break;
         }
         case 5:

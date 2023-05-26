@@ -1,0 +1,4 @@
+Username: abc
+Location: (12, 4)
+Hospital: Hospital A
+====================
