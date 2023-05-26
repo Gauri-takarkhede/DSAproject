@@ -4,6 +4,7 @@
 #include <string.h>
 #include <limits.h>
 #include <math.h>
+#include <ctype.h>
 
 #define MAX_USERS 100
 #define MAX_HOSPITALS 100
@@ -17,36 +18,42 @@ typedef struct
 typedef struct
 {
     char name[50];
-    int x, y; // Coordinates of the hospital
+    int x;
+    int y;
     bool hasAmbulance;
 } Hospital;
 
 typedef struct
 {
-    int vertexCount;
     Hospital hospitals[MAX_HOSPITALS];
     int adjacencyMatrix[MAX_HOSPITALS][MAX_HOSPITALS];
+    int vertexCount;
 } Graph;
 
 User users[MAX_USERS];
-int userCount = 0;
 Graph graph;
+int loggedInUserIndex = -1;
+int userCount = 0;
 
 void saveUserAccounts()
 {
     FILE *file = fopen("user_accounts.txt", "w");
     if (file == NULL)
     {
-        printf("Error opening file.\n");
+        printf("Error saving user accounts.\n");
         return;
     }
 
-    for (int i = 0; i < userCount; i++)
+    for (int i = 0; i < MAX_USERS; i++)
     {
-        fprintf(file, "%s %s\n", users[i].username, users[i].password);
+        if (strlen(users[i].username) > 0)
+        {
+            fprintf(file, "%s %s\n", users[i].username, users[i].password);
+        }
     }
 
     fclose(file);
+    printf("User accounts saved successfully.\n");
 }
 
 void loadUserAccounts()
@@ -54,67 +61,23 @@ void loadUserAccounts()
     FILE *file = fopen("user_accounts.txt", "r");
     if (file == NULL)
     {
-        printf("No user accounts found.\n");
+        printf("No user accounts found. Creating a new file.\n");
         return;
     }
 
-    userCount = 0;
-    char username[50], password[50];
-
-    while (fscanf(file, "%s %s", username, password) != EOF)
+    int count = 0;
+    while (fscanf(file, "%s %s", users[count].username, users[count].password) != EOF)
     {
-        strcpy(users[userCount].username, username);
-        strcpy(users[userCount].password, password);
-        userCount++;
+        count++;
     }
 
+    printf("Loaded %d user accounts.\n", count);
     fclose(file);
-}
-
-void addNewUser()
-{
-    if (userCount == MAX_USERS)
-    {
-        printf("Maximum user limit reached.\n");
-        return;
-    }
-
-    User newUser;
-    printf("Enter username: ");
-    scanf("%s", newUser.username);
-
-    // Check if the username already exists
-    for (int i = 0; i < userCount; i++)
-    {
-        if (strcmp(users[i].username, newUser.username) == 0)
-        {
-            printf("Username already exists. Please choose a different username.\n");
-            return;
-        }
-    }
-
-    printf("Enter password: ");
-    scanf("%s", newUser.password);
-
-    users[userCount++] = newUser;
-    printf("User created successfully.\n");
-
-    saveUserAccounts();
-    FILE *signupLog = fopen("signup_log.txt", "a");
-    if (signupLog == NULL)
-    {
-        printf("Error opening signup log file.\n");
-        return;
-    }
-    fprintf(signupLog, "Username: %s\n", newUser.username);
-    fprintf(signupLog, "Password: %s\n", newUser.password);
-    fprintf(signupLog, "====================\n");
-    fclose(signupLog);
 }
 
 int findUserIndex(const char *username)
 {
-    for (int i = 0; i < userCount; i++)
+    for (int i = 0; i < MAX_USERS; i++)
     {
         if (strcmp(users[i].username, username) == 0)
         {
@@ -124,18 +87,65 @@ int findUserIndex(const char *username)
     return -1;
 }
 
+void addNewUser()
+{
+    User newUser;
+    printf("Enter new username: ");
+    scanf("%s", newUser.username);
+
+    int existingIndex = findUserIndex(newUser.username);
+    if (existingIndex != -1)
+    {
+        printf("Username already exists.\n");
+        return;
+    }
+
+    printf("Enter new password: ");
+    scanf("%s", newUser.password);
+
+    for (int i = 0; i < MAX_USERS; i++)
+    {
+        if (strlen(users[i].username) == 0)
+        {
+            users[i] = newUser;
+            printf("User account created successfully.\n");
+
+            // Append user signup information to the log file
+            FILE *signupLog = fopen("signup_log.txt", "a");
+            if (signupLog == NULL)
+            {
+                printf("Error opening signup log file.\n");
+                return;
+            }
+            fprintf(signupLog, "Username: %s\n", newUser.username);
+            fprintf(signupLog, "Password: %s\n", newUser.password);
+            fprintf(signupLog, "====================\n");
+            fclose(signupLog);
+
+            saveUserAccounts();
+            return;
+        }
+    }
+
+    printf("Maximum user account limit reached.\n");
+}
+
 bool login()
 {
-    char username[50], password[50];
+    char username[50];
+    char password[50];
+
     printf("Enter username: ");
     scanf("%s", username);
     printf("Enter password: ");
     scanf("%s", password);
 
-    int userIndex = findUserIndex(username);
-    if (userIndex != -1 && strcmp(users[userIndex].password, password) == 0)
+    loggedInUserIndex = findUserIndex(username);
+    if (loggedInUserIndex != -1 && strcmp(users[loggedInUserIndex].password, password) == 0)
     {
-        printf("Login successful.\n");
+        printf("Logged in successfully as %s.\n", username);
+
+        // Append user login information to the log file
         FILE *loginLog = fopen("login_log.txt", "a");
         if (loginLog == NULL)
         {
@@ -150,6 +160,7 @@ bool login()
     }
     else
     {
+        loggedInUserIndex = -1; // Reset the index if login fails
         printf("Invalid username or password.\n");
         return false;
     }
@@ -240,44 +251,105 @@ int findNearestHospital(int userX, int userY)
     return nearestHospital;
 }
 
+bool isValidMobileNumber(const char *mobileNumber)
+{
+    // Check the length of the mobile number
+    size_t length = strlen(mobileNumber);
+    if (length != 10)
+    {
+        return false;
+    }
+
+    // Check that all characters are digits
+    for (size_t i = 0; i < length; i++)
+    {
+        if (!isdigit(mobileNumber[i]))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 void bookAmbulance()
 {
-    char username[50];
-    int userIndex;
-
-    printf("Enter username: ");
-    scanf("%s", username);
-
-    userIndex = findUserIndex(username);
-    if (userIndex == -1)
+    if (loggedInUserIndex != -1)
     {
-        printf("User not found.\n");
-        return;
+        int userX, userY;
+        printf("Enter your location (x y): ");
+        scanf("%d %d", &userX, &userY);
+
+        int nearestHospital = findNearestHospital(userX, userY);
+        if (nearestHospital != -1)
+        {
+            printf("Ambulance booked successfully!\n");
+            printf("Nearest hospital: %s\n", graph.hospitals[nearestHospital].name);
+
+            // Collect user information
+            char patientName[50];
+            int patientAge;
+            char mobileNumber[15];
+            char fullAddress[100];
+
+            printf("\nEnter patient name: ");
+            scanf("%s", patientName);
+            printf("Enter patient age: ");
+            scanf("%d", &patientAge);
+            bool validMobileNumber = false;
+            while (!validMobileNumber)
+            {
+                printf("Enter mobile number: ");
+                scanf("%s", mobileNumber);
+
+                if (isValidMobileNumber(mobileNumber))
+                {
+                    validMobileNumber = true;
+                }
+                else
+                {
+                    printf("Invalid mobile number. Please enter a 10-digit number.\n");
+                }
+            }
+
+            printf("Enter full address: ");
+            scanf(" %[^\n]s", fullAddress);
+
+            // Generate and display receipt
+            printf("\n--- Receipt ---\n");
+            printf("Patient Name: %s\n", patientName);
+            printf("Patient Age: %d\n", patientAge);
+            printf("Mobile Number: %s\n", mobileNumber);
+            printf("Full Address: %s\n", fullAddress);
+            printf("Hospital: %s\n", graph.hospitals[nearestHospital].name);
+            printf("---------------\n");
+
+            // Append user ambulance booking information to the log file
+            FILE *ambulanceBookingLog = fopen("ambulance_booking_log.txt", "a");
+            if (ambulanceBookingLog == NULL)
+            {
+                printf("Error opening ambulance booking log file.\n");
+                return;
+            }
+            fprintf(ambulanceBookingLog, "Username: %s\n", users[loggedInUserIndex].username);
+            fprintf(ambulanceBookingLog, "Location: (%d, %d)\n", userX, userY);
+            fprintf(ambulanceBookingLog, "Hospital: %s\n", graph.hospitals[nearestHospital].name);
+            fprintf(ambulanceBookingLog, "Patient Name: %s\n", patientName);
+            fprintf(ambulanceBookingLog, "Patient Age: %d\n", patientAge);
+            fprintf(ambulanceBookingLog, "Mobile Number: %s\n", mobileNumber);
+            fprintf(ambulanceBookingLog, "Full Address: %s\n", fullAddress);
+            fprintf(ambulanceBookingLog, "====================\n");
+            fclose(ambulanceBookingLog);
+        }
+        else
+        {
+            printf("No hospitals with available ambulances found.\n");
+        }
     }
-
-    int userX, userY;
-    printf("Enter user's current location (x y): ");
-    scanf("%d %d", &userX, &userY);
-
-    int nearestHospital = findNearestHospital(userX, userY);
-    if (nearestHospital == -1)
+    else
     {
-        printf("No hospitals with an ambulance available.\n");
-        return;
+        printf("You must be logged in to book an ambulance.\n");
     }
-
-    printf("Ambulance booked. Nearest hospital with an ambulance: %s\n", graph.hospitals[nearestHospital].name);
-    FILE *ambulanceBookingLog = fopen("ambulance_booking_log.txt", "a");
-    if (ambulanceBookingLog == NULL)
-    {
-        printf("Error opening ambulance booking log file.\n");
-        return;
-    }
-    fprintf(ambulanceBookingLog, "Username: %s\n", username);
-    fprintf(ambulanceBookingLog, "Location: (%d, %d)\n", userX, userY);
-    fprintf(ambulanceBookingLog, "Hospital: %s\n", graph.hospitals[nearestHospital].name);
-    fprintf(ambulanceBookingLog, "====================\n");
-    fclose(ambulanceBookingLog);
 }
 
 int main()
