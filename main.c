@@ -37,6 +37,45 @@ User users[MAX_USERS];
 int userCount = 0;
 Graph graph;
 
+void saveUserAccounts()
+{
+    FILE *file = fopen("user_accounts.txt", "w");
+    if (file == NULL)
+    {
+        printf("Error opening file.\n");
+        return;
+    }
+
+    for (int i = 0; i < userCount; i++)
+    {
+        fprintf(file, "%s %s\n", users[i].username, users[i].password);
+    }
+
+    fclose(file);
+}
+
+void loadUserAccounts()
+{
+    FILE *file = fopen("user_accounts.txt", "r");
+    if (file == NULL)
+    {
+        printf("No user accounts found.\n");
+        return;
+    }
+
+    userCount = 0;
+    char username[50], password[50];
+
+    while (fscanf(file, "%s %s", username, password) != EOF)
+    {
+        strcpy(users[userCount].username, username);
+        strcpy(users[userCount].password, password);
+        userCount++;
+    }
+
+    fclose(file);
+}
+
 void addNewUser()
 {
     if (userCount == MAX_USERS)
@@ -64,6 +103,8 @@ void addNewUser()
 
     users[userCount++] = newUser;
     printf("User created successfully.\n");
+
+    saveUserAccounts();
 }
 
 int findUserIndex(const char *username)
@@ -114,6 +155,8 @@ void changePassword()
         scanf("%s", newPassword);
         strcpy(users[userIndex].password, newPassword);
         printf("Password changed successfully.\n");
+
+        saveUserAccounts();
     }
     else
     {
@@ -198,6 +241,8 @@ int main()
 
     graph.vertexCount = 0;
 
+    loadUserAccounts();
+
     while (1)
     {
         printf("\n=== Menu ===\n");
@@ -270,6 +315,7 @@ int main()
             break;
         case 6:
             printf("Exiting...\n");
+            saveUserAccounts();
             exit(0);
         default:
             printf("Invalid choice.\n");
